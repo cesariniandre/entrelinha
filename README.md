@@ -2,7 +2,9 @@
 
 Teclado de ditado para iOS com **Boost por IA**: você dita normalmente e o texto entra no campo como sempre. Se quiser, toca em **Boost** e um agente reescreve aquele trecho do jeito que você configurou (limpar, enriquecer, formalizar, resumir em tópicos, traduzir…), em qualquer app.
 
-> Status: em desenvolvimento. O plano de implementação está em [`docs/PLANO-IA-AGENTES.md`](docs/PLANO-IA-AGENTES.md).
+> Status: o Boost está implementado no código do app, no repositório [`cesariniandre/mykey`](https://github.com/cesariniandre/mykey) (`Shared/BoostSettings.swift`, `Shared/BoostEngine.swift`, `Keyboard/Hex/FullKeyboard/BoostMenuView.swift`, `App/BoostAgentsView.swift`). O plano original está em [`docs/PLANO-IA-AGENTES.md`](docs/PLANO-IA-AGENTES.md).
+>
+> Diferenças da implementação em relação ao plano: a configuração fica no **Keychain compartilhado** (a conta de desenvolvimento gratuita não tem App Group); o ditado já roda dentro do teclado, então o Boost roda no teclado também; na barra, o Boost aparece ao lado de **Desfazer** e do chip do agente, e escolher um agente no menu já reescreve com ele.
 
 ---
 

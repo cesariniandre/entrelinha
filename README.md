@@ -101,3 +101,4 @@ O teclado não acessa o microfone nem faz chamadas de IA (limitações do iOS pa
 
 - [Plano de implementação dos agentes de IA](docs/PLANO-IA-AGENTES.md)
 - [Apresentação institucional](docs/README-INSTITUCIONAL.md)
+- [Textos de interface (UX copy) dos agentes](docs/UX-COPY-AGENTES.md)

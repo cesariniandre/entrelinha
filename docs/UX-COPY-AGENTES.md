@@ -12,7 +12,8 @@ Textos de interface para o fluxo descrito em [`PLANO-IA-AGENTES.md`](PLANO-IA-AG
 
 | Use | Não use | Observação |
 |---|---|---|
-| agente | assistente, modo, persona, bot | O conceito central do app |
+| Boost | melhorar, IA, mágica, turbo | Nome da ação de reescrever. Mantido em inglês: curto, cabe na barra. Como verbo, use "tocar em Boost" (não "boostar") |
+| agente | assistente, modo, persona, bot | Define *como* o Boost reescreve |
 | ditado / ditar | gravação, áudio, voz (como substantivo do conteúdo) | "Gravação" só em contexto técnico de permissão |
 | texto original | transcrição bruta, versão crua | "Transcrição" é jargão para o usuário |
 | reescrever | processar, gerar, melhorar com IA | "Refinar" só no estado de carregamento |
@@ -33,23 +34,27 @@ Espaço máximo do chip do agente: **~18 caracteres** (o nome trunca com "…").
 |---|---|---|
 | Ícone de menu (acessibilidade) | `Trocar agente` | VoiceOver |
 | Chip do agente | `{Nome do agente}` + ▾ | 18 car. |
-| Chip quando nenhum agente | `Sem agente` | |
+| Botão Boost | `Boost` (ícone ⚡) | 6 car. |
+| Botão Boost (acessibilidade) | `Reescrever com {Nome do agente}` | VoiceOver |
+| Dica do Boost (acessibilidade) | `Toque duas vezes e segure para escolher outro agente` | VoiceOver |
 | Botão desfazer | `Original` (ícone ↺) | 8 car. |
-| Botão desfazer (acessibilidade) | `Voltar ao texto original` | VoiceOver |
+| Botão desfazer (acessibilidade) | `Voltar ao texto ditado` | VoiceOver |
 | Microfone (acessibilidade, parado) | `Ditar` | VoiceOver |
 | Microfone (acessibilidade, gravando) | `Parar e inserir texto` | VoiceOver |
 
-### Estados no chip (substituem o nome temporariamente)
+### Estados do botão ao lado do microfone
 
-| Estado | Texto | Duração |
+O ditado não tem estado novo: ele continua como hoje. Os estados abaixo são só do botão Boost.
+
+| Estado | Texto no botão | Quando |
 |---|---|---|
-| Ouvindo | `Ouvindo…` | enquanto grava |
-| Reescrevendo | `Reescrevendo…` | até o texto chegar |
-| Inserido com agente | `Pronto` | 1,5 s, depois volta ao nome |
-| Fallback (erro/timeout) | `Texto original inserido` | 3 s |
-| Desfeito | `Original restaurado` | 1,5 s |
+| Oculto | — | Antes de ditar, ou depois que a pessoa digita/move o cursor |
+| Pronto | `⚡ Boost` | Logo depois que o ditado é inserido |
+| Reescrevendo | `Reescrevendo…` (com spinner) | Depois do toque, até o texto chegar |
+| Feito | `↺ Original` | Depois de um Boost bem-sucedido |
+| Desativado | `⚡ Boost` em cinza | Agente sem configuração ou sem internet (agente de nuvem) |
 
-**Por quê:** "Reescrevendo…" diz exatamente o que acontece com o texto da pessoa; "Refinando" e "Processando" são vagos. No fallback, o foco é o que *foi feito* (o texto entrou), não o erro: a pessoa pode seguir a conversa.
+**Por quê:** o rótulo "Boost" fica curto e fixo; o *que* ele faz aparece no chip do agente ao lado, então a pessoa lê "Enriquecer escrita · ⚡ Boost" e entende. "Reescrevendo…" diz exatamente o que acontece com o texto; "Processando" é vago. Depois do Boost, o mesmo lugar vira "Original", então desfazer está onde o dedo já está.
 
 ---
 
@@ -59,8 +64,8 @@ Espaço máximo do chip do agente: **~18 caracteres** (o nome trunca com "…").
 |---|---|
 | Título | `Agente` |
 | Linha de agente | `{Nome}` / legenda: `{Provedor}` → `Apple · no iPhone`, `Claude`, `OpenAI`, `OpenRouter` |
-| Linha "Sem agente" — legenda | `Insere o que você disse` |
 | Agente indisponível — legenda | `Configurar no app` |
+| Título quando aberto segurando o Boost | `Boost com…` (ao escolher, já reescreve) |
 | Último item | `Gerenciar agentes` |
 | Fechar (acessibilidade) | `Fechar lista de agentes` |
 
@@ -70,20 +75,21 @@ Espaço máximo do chip do agente: **~18 caracteres** (o nome trunca com "…").
 
 ## 4. Erros e avisos no teclado
 
-Estrutura: o que aconteceu + o que fazer. No teclado, uma linha só; o "porquê" vai para o app.
+Estrutura: o que aconteceu + o que fazer. No teclado, uma linha só, no lugar do chip do agente por ~3 s; o "porquê" vai para o app. Em toda falha do Boost, o texto do campo **não muda** e o Boost continua disponível para tentar de novo.
 
 | Situação | Texto no teclado | Ação |
 |---|---|---|
-| Sem Acesso Total | `Ative o Acesso Total para usar agentes` | `Como ativar` |
+| Sem Acesso Total (toque no Boost) | `Ative o Acesso Total para usar o Boost` | `Como ativar` |
+| Sem internet (agente na nuvem) | `Sem internet. Seu texto não mudou.` | — |
+| Timeout | `Demorou demais. Seu texto não mudou.` | `Tentar de novo` |
+| Chave inválida | `Chave do {Provedor} recusada. Seu texto não mudou.` | `Corrigir` |
+| Agente sem configuração | `Configure {Nome do agente} no app` | `Abrir app` |
+| Apple Intelligence indisponível | `Apple Intelligence está desligada` | `Como ativar` |
+| Texto editado durante o Boost | `Você editou o texto, então o Boost não foi aplicado` | — |
 | Microfone sem permissão | `Permita o microfone para ditar` | `Abrir Ajustes` |
-| Sem internet (agente na nuvem) | `Sem internet. Inseri o texto original.` | — |
-| Timeout | `Demorou demais. Inseri o texto original.` | — |
-| Chave inválida | `Chave do {Provedor} recusada. Inseri o texto original.` | `Corrigir` |
-| Apple Intelligence indisponível | `Apple Intelligence está desligada. Inseri o texto original.` | `Como ativar` |
 | Não entendeu o áudio | `Não consegui ouvir. Tente de novo mais perto do microfone.` | — |
-| "Original" não disponível (cursor moveu) | `Não dá para desfazer depois de editar o texto` | — |
 
-**Por quê:** "Inseri o texto original" acalma (nada se perdeu) e evita o tom de falha. A primeira pessoa ("Inseri") soa humana e curta. Nenhum código de erro aparece para o usuário.
+**Por quê:** "Seu texto não mudou" responde a única dúvida que importa depois de uma falha: *perdi alguma coisa?* Nenhum código de erro aparece para o usuário.
 
 ---
 
@@ -92,7 +98,7 @@ Estrutura: o que aconteceu + o que fazer. No teclado, uma linha só; o "porquê"
 | Elemento | Texto |
 |---|---|
 | Título da tela | `Agentes` |
-| Subtítulo | `Escolha como o Entrelinha reescreve o que você dita.` |
+| Subtítulo | `Escolha como o Boost reescreve o que você dita.` |
 | Botão principal | `Novo agente` |
 | Selo no agente ativo | `Em uso` |
 | Selo nos presets | `Pronto` → **usar** `Do Entrelinha` (evita confundir com o estado "Pronto") |
@@ -101,14 +107,13 @@ Estrutura: o que aconteceu + o que fazer. No teclado, uma linha só; o "porquê"
 
 **Estado vazio** (todos os agentes ocultos/excluídos):
 > **Nenhum agente por aqui**
-> Sem agente, o Entrelinha insere exatamente o que você disse. Crie um agente para limpar, enriquecer ou mudar o tom do seu texto.
+> O ditado continua funcionando normalmente. Crie um agente para o Boost limpar, enriquecer ou mudar o tom do seu texto.
 > `Criar agente` · `Restaurar agentes do Entrelinha`
 
 ### Descrições dos agentes do Entrelinha (1 linha, ≤ 50 car.)
 
 | Agente | Descrição |
 |---|---|
-| Sem agente | O que você disse, sem mudanças. |
 | Transcrição limpa | Pontuação certa, sem "é…" e repetições. |
 | Enriquecer escrita | Mais fluidez e vocabulário, com a sua voz. |
 | Profissional | Tom formal e direto para o trabalho. |
@@ -126,7 +131,7 @@ Estrutura: o que aconteceu + o que fazer. No teclado, uma linha só; o "porquê"
 | Nome | `Nome` | `Ex.: Meu estilo` |
 | Ícone | `Ícone` | — |
 | Instruções | `Instruções` (subtítulo pequeno: `system prompt`) | `Descreva como o texto deve ficar. Ex.: "Reescreva de forma calorosa e breve, sem emojis, mantendo as informações."` |
-| Ajuda abaixo das instruções | — | `Escreva como se explicasse para uma pessoa. O texto ditado é enviado junto, você não precisa incluí-lo.` |
+| Ajuda abaixo das instruções | — | `Escreva como se explicasse para uma pessoa. O trecho em que você tocar Boost é enviado junto, você não precisa incluí-lo.` |
 | Provedor | `Modelo de IA` | opções: `Apple Intelligence (no iPhone)`, `Claude (Anthropic)`, `OpenAI`, `OpenRouter`, `Nenhum` |
 | Modelo | `Modelo` | `Ex.: claude-haiku-5-5` |
 | Temperatura | `Criatividade` | extremos: `Fiel` ↔ `Criativo` |
@@ -184,7 +189,7 @@ Estrutura: o que aconteceu + o que fazer. No teclado, uma linha só; o "porquê"
 
 **Aviso de privacidade** (aparece ao salvar a primeira chave de nuvem — sheet):
 > **Seu texto vai para {Provedor}**
-> Agentes que usam {Provedor} enviam o que você dita para os servidores dele, usando a sua chave. Com o Apple Intelligence, o texto não sai do iPhone.
+> Quando você toca em Boost com um agente que usa {Provedor}, aquele trecho é enviado para os servidores dele, usando a sua chave. Ditar sem tocar em Boost não envia nada. Com o Apple Intelligence, o texto não sai do iPhone.
 > `Entendi` · `Ler a política do {Provedor}`
 
 ---
@@ -194,17 +199,18 @@ Estrutura: o que aconteceu + o que fazer. No teclado, uma linha só; o "porquê"
 | Tela | Título | Texto | Botão |
 |---|---|---|---|
 | 1 | `Fale do seu jeito` | `Dite como fala. O Entrelinha entrega o texto pronto para enviar.` | `Continuar` |
-| 2 | `Agentes escrevem por você` | `Escolha como o texto fica: limpo, profissional, em tópicos ou do jeito que você descrever.` | `Continuar` |
+| 2 | `Toque em Boost para reescrever` | `Depois de ditar, o Boost deixa o texto limpo, profissional, em tópicos ou do jeito que você descrever.` | `Continuar` |
 | 3 | `Ative o teclado` | `Ajustes › Geral › Teclado › Teclados › Adicionar › Entrelinha.` | `Abrir Ajustes` |
 | 4 | `Permita o Acesso Total` | `Assim o teclado recebe o texto do app. O Entrelinha não lê o que você digita.` | `Abrir Ajustes` |
-| 5 | `Tudo pronto` | `Abra qualquer conversa, toque no microfone e fale.` | `Começar` |
+| 5 | `Tudo pronto` | `Abra qualquer conversa, toque no microfone e fale. Quer ajustar o texto? Toque em ⚡ Boost.` | `Começar` |
 
 ---
 
 ## Notas de localização
 
 - **Expansão de texto:** do pt-BR para o inglês o texto encolhe ~10–15%; para alemão e francês cresce até 30%. O chip da barra (18 car.) precisa truncar com "…" em qualquer idioma.
-- **"Inseri"** (1ª pessoa) funciona em pt-BR; em inglês use voz neutra: "Original text inserted."
+- **"Seu texto não mudou"** em inglês: "Your text wasn't changed." Evite "Nothing happened", que soa como falha do app.
+- **"Boost"** não é traduzido em nenhum idioma (é o nome da ação, como uma marca).
 - **"é…", "tipo", "né"** nas descrições são exemplos de vícios do português. Em outros idiomas, troque pelos equivalentes locais ("um", "like" no inglês), não traduza literalmente.
 - **"Acesso Total"** e o caminho de Ajustes devem seguir os termos oficiais do iOS em cada idioma.
 - **Separador decimal:** "1,2 s" em pt-BR; "1.2 s" em inglês. Formatar com `MeasurementFormatter`, nunca com string fixa.

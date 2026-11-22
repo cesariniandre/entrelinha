@@ -1,6 +1,6 @@
 # Entrelinha
 
-Teclado de ditado para iOS com **agentes de IA**: você fala, o Entrelinha transcreve e, em seguida, um agente reescreve o texto do jeito que você configurou (limpar, enriquecer, formalizar, resumir em tópicos, traduzir…), antes de inseri-lo em qualquer app.
+Teclado de ditado para iOS com **Boost por IA**: você dita normalmente e o texto entra no campo como sempre. Se quiser, toca em **Boost** e um agente reescreve aquele trecho do jeito que você configurou (limpar, enriquecer, formalizar, resumir em tópicos, traduzir…), em qualquer app.
 
 > Status: em desenvolvimento. O plano de implementação está em [`docs/PLANO-IA-AGENTES.md`](docs/PLANO-IA-AGENTES.md).
 
@@ -9,17 +9,21 @@ Teclado de ditado para iOS com **agentes de IA**: você fala, o Entrelinha trans
 ## Como funciona
 
 ```
-🎙 Ditar  →  Transcrição  →  Agente (system prompt + modelo)  →  Texto inserido no campo
-                                   │
-                                   └─ erro, offline ou demora → insere a transcrição original
+🎙 Ditar  →  Texto transcrito inserido (igual a hoje)  →  [⚡ Boost] aparece na barra
+                                                              │ toque
+                                                              ▼
+                                   Agente ativo (system prompt + modelo) reescreve o trecho
+                                                              │
+                                                              ▼
+                                   Trecho substituído no campo  →  [↺ Original] para desfazer
 ```
 
-1. No teclado do Entrelinha, toque no microfone e fale.
-2. Ao parar, o áudio vira texto.
-3. O **agente ativo** (um *system prompt* escolhido por você) transforma esse texto.
-4. O resultado é inserido onde o cursor estiver. O botão **↺ Original** desfaz a reescrita por alguns segundos.
+1. No teclado do Entrelinha, toque no microfone e fale. **O ditado funciona exatamente como antes**: ao parar, o texto transcrito é inserido no campo.
+2. Assim que o texto entra, o botão **⚡ Boost** aparece na barra, ao lado do microfone.
+3. Tocou em **Boost**: o **agente ativo** (um *system prompt* escolhido por você) reescreve o trecho que acabou de ser ditado, e o resultado substitui esse trecho no campo.
+4. Não gostou? **↺ Original** devolve o texto ditado.
 
-Se a IA falhar, estiver indisponível ou passar do tempo-limite, o Entrelinha insere a transcrição original. **Um ditado nunca se perde.**
+A IA só roda quando você pede. Se ela falhar ou demorar, o texto fica como estava e o teclado avisa. **Nada é apagado sem resultado para colocar no lugar.**
 
 ## Agentes
 
@@ -27,7 +31,6 @@ Um agente é um **nome + ícone + system prompt + provedor/modelo + criatividade
 
 | Agente pronto | O que faz |
 |---|---|
-| Sem agente | Insere a transcrição exatamente como veio |
 | Transcrição limpa *(padrão)* | Pontuação, acentos e maiúsculas; remove "é…", "tipo", repetições. Não muda palavras |
 | Enriquecer escrita | Melhora fluidez, vocabulário e coesão mantendo sua voz |
 | Profissional | Tom formal e objetivo |
@@ -38,13 +41,17 @@ Um agente é um **nome + ícone + system prompt + provedor/modelo + criatividade
 
 Exemplos de agentes personalizados: "escrever no meu estilo", "português de Portugal", "transformar em post para LinkedIn", "ata de reunião", "resposta educada para cliente".
 
-### Trocar de agente pelo teclado
-
-Na barra do teclado, toque no ícone de menu (☰) ou no nome do agente. Um dropdown abre sobre as teclas com todos os agentes; toque em um para ativá-lo. A escolha vale para os próximos ditados, em qualquer app.
+### A barra do teclado
 
 ```
-[ ☰ ]  [ ✨ Enriquecer escrita ▾ ]                 [ ↺ Original ]  [ 🎙 ]
+Antes de ditar:        [ ☰ Enriquecer escrita ▾ ]                          [ 🎙 ]
+Depois do ditado:      [ ☰ Enriquecer escrita ▾ ]              [ ⚡ Boost ]  [ 🎙 ]
+Depois do Boost:       [ ☰ Enriquecer escrita ▾ ]           [ ↺ Original ]  [ 🎙 ]
 ```
+
+- **⚡ Boost** aparece logo depois de cada ditado e reescreve só aquele trecho com o agente ativo. Some quando você digita, move o cursor ou dita de novo.
+- **☰ / nome do agente**: abre um dropdown sobre as teclas com todos os agentes; toque em um para ativá-lo. A escolha vale para os próximos Boosts, em qualquer app.
+- **Segurar o Boost** abre o mesmo dropdown: escolha o agente e o Boost já roda com ele.
 
 ## Modelos de IA
 
@@ -55,35 +62,37 @@ Na barra do teclado, toque no ícone de menu (☰) ou no nome do agente. Um drop
 | **OpenRouter** | Nuvem | Sim | Acesso a vários modelos com uma chave; informe o *slug* do modelo |
 | **Anthropic (Claude)** | Nuvem | Sim | Padrão sugerido: `claude-haiku-5-5` (rápido) |
 
-Cada agente pode usar um provedor diferente. As chaves ficam no **Keychain** do iPhone e são testadas na tela *Provedores* (botão **Testar** mostra a latência).
+Cada agente pode usar um provedor diferente, e o Boost usa o do agente ativo. As chaves ficam no **Keychain** do iPhone e são testadas na tela *Provedores* (botão **Testar** mostra a latência).
 
 ## Velocidade
 
 A premissa do Entrelinha é ser rápido:
 
-- O modelo é **pré-aquecido enquanto você fala**, não depois.
-- Cada ditado usa uma sessão nova e curta, sem histórico.
-- Tempo-limite por provedor (Apple ~4 s, nuvem ~6 s); estourou, entra o texto original.
-- Sem internet, provedores de nuvem são pulados na hora.
+- O ditado não espera IA nenhuma: o texto entra no campo assim que é transcrito.
+- O modelo é **pré-aquecido no momento em que o botão Boost aparece**, antes do toque.
+- Cada Boost usa uma sessão nova e curta, sem histórico.
+- Tempo-limite por provedor (Apple ~4 s, nuvem ~6 s); estourou, o texto fica como estava.
+- Sem internet, agentes de nuvem mostram o Boost desativado em vez de tentar e falhar.
 
-Metas (ditado de ~30 palavras, do fim da fala ao texto inserido): sem agente < 150 ms · Apple < 1,2 s · nuvem < 2 s.
+Metas (trecho de ~30 palavras, do toque no Boost ao texto substituído): Apple < 1 s · nuvem < 2 s.
 
 ## Privacidade
 
 - Com **Apple Intelligence**, o texto não sai do aparelho.
-- Com **provedores externos**, o texto ditado é enviado ao provedor escolhido, usando a sua chave. O app avisa isso ao configurar.
+- Com **provedores externos**, só o trecho em que você tocou **Boost** é enviado ao provedor escolhido, usando a sua chave. O app avisa isso ao configurar.
+- Ditar sem tocar em Boost nunca envia nada para IA.
 - O Entrelinha não guarda o conteúdo dos ditados em logs ou analytics.
-- O teclado pede **Acesso Total** apenas para compartilhar dados (agentes, resultado do ditado) com o app Entrelinha.
+- O teclado pede **Acesso Total** para ler os agentes e as chaves compartilhadas com o app e para chamar provedores de nuvem.
 
 ## Arquitetura (resumo)
 
 | Componente | Responsabilidade |
 |---|---|
-| **App Entrelinha** | Gravação e transcrição, execução dos agentes (IA), configuração de agentes e provedores |
-| **Teclado (Keyboard Extension)** | Barra com microfone, seletor de agentes e "↺ Original"; insere o texto final |
+| **App Entrelinha** | Gravação e transcrição (como hoje), configuração de agentes e provedores |
+| **Teclado (Keyboard Extension)** | Barra com microfone, **Boost**, seletor de agentes e "↺ Original"; executa o Boost e substitui o trecho |
 | **EntrelinhaKit** | Código compartilhado: modelo `Agent`, `AgentStore`, provedores de IA, `RewriteEngine`, Keychain, App Group |
 
-O teclado não acessa o microfone nem faz chamadas de IA (limitações do iOS para extensões); ele conversa com o app por **App Group** e **Darwin notifications**. Detalhes em [`docs/PLANO-IA-AGENTES.md`](docs/PLANO-IA-AGENTES.md).
+O teclado não acessa o microfone (limitação do iOS), então o ditado continua passando pelo app. O Boost roda no próprio teclado, porque é ali que o toque acontece; se o Apple Intelligence não puder rodar dentro da extensão, o teclado delega a reescrita ao app. Detalhes em [`docs/PLANO-IA-AGENTES.md`](docs/PLANO-IA-AGENTES.md).
 
 ## Requisitos
 

@@ -1,6 +1,6 @@
 # Plano de execução — Agentes de IA sobre o ditado
 
-> Objetivo: depois que o usuário termina de ditar, um **agente** (um *system prompt* configurável) reescreve a transcrição antes de ela ser inserida no campo de texto. O agente ativo é trocado direto na barra do teclado, por um ícone de menu que abre um dropdown sobre as teclas.
+> Objetivo: **o ditado continua exatamente como está** — o texto transcrito é inserido no campo, sem IA no caminho. Assim que ele entra, aparece na barra do teclado, ao lado do microfone, o botão **⚡ Boost**. Ao tocar, o trecho recém-ditado é reescrito pelo **agente** ativo (um *system prompt* configurável) e substituído no campo. O agente ativo é trocado na própria barra, por um ícone de menu que abre um dropdown sobre as teclas.
 >
 > Premissas: **funcional e rápido**. Modelo padrão **Apple Intelligence (on-device)**; modelos externos opcionais: **OpenAI**, **OpenRouter** e **Anthropic**.
 
@@ -13,34 +13,48 @@ Este documento foi escrito para ser executado **na ordem**. Cada fase entrega al
 ### Fluxo do usuário
 
 ```
-[🎙 Ditar] → [Transcrição bruta] → [Agente ativo: system prompt + modelo] → [Texto final inserido]
-                                          │
-                                          ├─ timeout / erro / offline → insere a transcrição bruta
-                                          └─ "Sem agente"             → insere a transcrição bruta direto
+[🎙 Ditar] → [Texto transcrito inserido — sem mudanças no fluxo atual] → [⚡ Boost] aparece na barra
+                                                                              │ toque
+                                                                              ▼
+                                              [RewriteEngine: agente ativo (system prompt + modelo)]
+                                                                              │
+                                     ├─ sucesso → substitui o trecho ditado → [↺ Original] aparece
+                                     └─ timeout / erro / offline → texto fica intacto + aviso curto
 ```
 
-1. Usuário toca no microfone e dita.
-2. Ao finalizar, a transcrição bruta vai para o `RewriteEngine`.
-3. O engine monta o prompt (`system` = prompt do agente + regras fixas; `user` = transcrição) e chama o provedor do agente (Apple por padrão).
-4. O resultado substitui o texto no campo. Se falhar ou passar do tempo-limite, entra a transcrição bruta — **o usuário nunca fica sem texto**.
-5. Um botão **"↺ Original"** na barra desfaz a reescrita por alguns segundos.
+1. Usuário toca no microfone e dita. **Nada muda neste fluxo**: o texto transcrito é inserido no campo como hoje.
+2. O teclado guarda o trecho inserido (`lastDictation`) e mostra **⚡ Boost**. No mesmo instante, pré-aquece o modelo do agente ativo.
+3. Toque em Boost → o `RewriteEngine` monta o prompt (`system` = prompt do agente + regras fixas; `user` = trecho ditado) e chama o provedor do agente (Apple por padrão).
+4. Sucesso → o trecho é apagado e o resultado é inserido no lugar; **↺ Original** substitui o Boost na barra.
+5. Falha ou tempo-limite → **o texto não é tocado** e o teclado mostra um aviso de uma linha.
+
+Quando o Boost aparece e some:
+
+| Evento | Botão na barra |
+|---|---|
+| Ditado inserido | ⚡ Boost |
+| Boost tocado | Spinner "Reescrevendo…" |
+| Boost concluído | ↺ Original (até o próximo evento abaixo) |
+| Usuário digita, apaga, move o cursor, troca de campo ou dita de novo | some (nenhum dos dois) |
+| Novo ditado | ⚡ Boost para o novo trecho |
 
 ### Restrições da plataforma que moldam a arquitetura
 
 | Restrição | Consequência no desenho |
 |---|---|
-| Extensões de teclado **não podem usar o microfone**. | A gravação e a transcrição rodam no **app principal** (sessão de áudio em background). O teclado só pede para começar/parar e recebe o texto. |
-| Extensões de teclado têm **limite de memória baixo** (~60–70 MB). | O processamento de IA roda no **app principal**, não no teclado. O teclado só exibe estado e insere o texto. |
-| Teclado só faz rede com **Acesso Total** ("Allow Full Access"). | Como a chamada de rede acontece no app, o teclado não precisa de rede. O Acesso Total ainda é necessário para ler o App Group compartilhado. |
+| Extensões de teclado **não podem usar o microfone**. | O ditado continua como está (gravação e transcrição no app). O Boost não depende disso: atua sobre o texto já inserido. |
+| Extensões de teclado têm **limite de memória baixo** (~60–70 MB). | O Boost roda **no teclado** (é onde o toque acontece; menor latência). Chamadas HTTP cabem folgado. O modelo da Apple roda num processo do sistema, mas isso precisa ser **validado no aparelho** (spike da Fase 3). Se não funcionar na extensão, o teclado delega o Boost ao app via App Group + Darwin notification. |
+| Teclado só faz rede com **Acesso Total** ("Allow Full Access"). | Acesso Total é obrigatório para o Boost: lê agentes e chaves compartilhados e chama provedores de nuvem. Sem ele, o Boost aparece desativado com instrução para ativar. |
+| O teclado só enxerga o texto perto do cursor (`documentContextBeforeInput`). | O Boost atua sobre o **último trecho ditado**, que o próprio teclado inseriu e conhece. Antes de substituir, confere que o texto antes do cursor ainda termina com esse trecho. |
 | A view do teclado **não desenha fora do próprio frame**. | O "dropdown" de agentes é uma camada que cobre a área das teclas (dentro da altura do teclado), não um popover que sobe sobre o app. |
-| Apple Intelligence (Foundation Models) exige iOS 26+, aparelho compatível e o recurso ligado. | Checar `availability`; se não houver, cair para o provedor externo configurado ou para "sem agente". |
+| Apple Intelligence (Foundation Models) exige iOS 26+, aparelho compatível e o recurso ligado. | Checar `availability`; se não houver, agentes Apple aparecem como "Configurar" e o Boost sugere um provedor externo. O ditado não é afetado. |
 | Contexto do modelo on-device é de ~4.096 tokens. | Limitar o tamanho da transcrição enviada (ditados longos são divididos ou vão para o provedor externo). |
 
 ### Comunicação app ↔ teclado
 
 - **App Group** (`group.com.entrelinha.shared`): `UserDefaults(suiteName:)` para agentes e agente ativo; arquivo JSON para o resultado da última reescrita.
-- **Keychain compartilhado** (`keychain-access-groups`): chaves de API. Nunca em `UserDefaults`.
-- **Darwin notifications** (`CFNotificationCenterGetDarwinNotifyCenter`) para avisar "agente mudou", "transcrição pronta", "reescrita pronta".
+- **Keychain compartilhado** (`keychain-access-groups`): chaves de API, cadastradas no app e lidas pelo teclado no Boost. Nunca em `UserDefaults`.
+- **Darwin notifications** (`CFNotificationCenterGetDarwinNotifyCenter`) para avisar "agente mudou" e, só no caminho de fallback, "boost pedido" / "boost pronto".
 
 ---
 
@@ -57,8 +71,11 @@ Entrelinha/                      # app principal (SwiftUI)
 EntrelinhaKeyboard/              # Keyboard Extension
   KeyboardViewController.swift
   Toolbar/
-    KeyboardToolbar.swift        # barra com 🎙, chip do agente, ícone de menu
+    KeyboardToolbar.swift        # barra: chip do agente, Boost/Original, 🎙
+    BoostButton.swift            # estados: oculto, pronto, carregando, original
     AgentPickerOverlay.swift     # dropdown sobre as teclas
+  Boost/
+    BoostController.swift        # guarda lastDictation, roda o engine, substitui o trecho
 EntrelinhaKit/                   # framework compartilhado (app + teclado)
   Agents/
     Agent.swift
@@ -104,7 +121,8 @@ public enum AppGroup {
 // EntrelinhaKit/Shared/DarwinNotifier.swift
 public enum DarwinEvent: String {
     case activeAgentChanged = "com.entrelinha.activeAgentChanged"
-    case rewriteReady       = "com.entrelinha.rewriteReady"
+    case boostRequested     = "com.entrelinha.boostRequested"   // só no fallback via app
+    case boostReady         = "com.entrelinha.boostReady"       // só no fallback via app
 }
 
 public enum DarwinNotifier {
@@ -167,14 +185,14 @@ public struct Agent: Codable, Identifiable, Hashable {
     public var name: String              // "Enriquecer escrita"
     public var symbol: String            // SF Symbol: "wand.and.stars"
     public var systemPrompt: String
-    public var provider: ProviderKind    // .apple, .openAI, .openRouter, .anthropic, .none
+    public var provider: ProviderKind    // .apple, .openAI, .openRouter, .anthropic
     public var model: String?            // ex.: "claude-haiku-5-5"; nil para Apple
     public var temperature: Double       // 0.0–1.0 (padrão 0.3)
     public var isBuiltIn: Bool
 }
 
 public enum ProviderKind: String, Codable, CaseIterable {
-    case none, apple, openAI, openRouter, anthropic
+    case apple, openAI, openRouter, anthropic
 }
 ```
 
@@ -184,7 +202,6 @@ public enum ProviderKind: String, Codable, CaseIterable {
 
 | Agente | Ícone | Intenção do system prompt |
 |---|---|---|
-| Sem agente | `mic` | Não chama IA. Insere a transcrição como veio. |
 | Transcrição limpa *(padrão)* | `text.badge.checkmark` | Corrige pontuação, maiúsculas, remove vícios ("é…", "tipo", repetições). Não muda palavras nem tom. |
 | Enriquecer escrita | `wand.and.stars` | Melhora fluidez, vocabulário e coesão mantendo sentido e voz do autor. |
 | Profissional | `briefcase` | Tom formal e objetivo, adequado a trabalho. |
@@ -205,9 +222,20 @@ não acrescente informação e não mude o tom.
 
 ---
 
-## Fase 3 — Motor de reescrita + Apple Intelligence (o caminho rápido)
+## Fase 3 — Botão Boost + motor de reescrita com Apple Intelligence (MVP)
 
-**Entrega:** ao terminar o ditado, o texto inserido já é o texto reescrito pelo agente ativo usando o modelo on-device.
+**Entrega:** depois de cada ditado, o botão ⚡ Boost aparece; ao tocar, o trecho é reescrito pelo agente ativo com o modelo on-device e substituído no campo.
+
+### 3.0 Spike (meio dia, antes de tudo): onde o Boost roda
+
+Validar em aparelho real com Apple Intelligence:
+1. Chamar `LanguageModelSession.respond` **de dentro da Keyboard Extension** com um texto de ~100 palavras.
+2. Medir memória da extensão (Xcode › Debug Navigator) e latência.
+
+| Resultado | Decisão |
+|---|---|
+| Funciona e a extensão fica abaixo do limite de memória | **Boost roda no teclado** (caminho principal deste plano). |
+| Não funciona ou estoura memória | Apple roda no app: teclado grava o pedido no App Group e posta `.boostRequested`; o app (vivo pela sessão de áudio do ditado) roda o engine e posta `.boostReady`. Provedores de nuvem continuam no teclado. |
 
 ### 3.1 Contrato de provedor
 
@@ -279,7 +307,7 @@ public final class AppleIntelligenceProvider: LLMProvider {
 
 ```swift
 // EntrelinhaKit/AI/RewriteEngine.swift
-public struct RewriteResult { public let text: String; public let original: String; public let usedAI: Bool }
+public enum BoostError: Error { case notConfigured, offline, timeout, emptyResult, provider(String) }
 
 public final class RewriteEngine {
     public var timeout: Duration = .seconds(4)       // configurável (Apple: 4s; nuvem: 6s)
@@ -288,22 +316,17 @@ public final class RewriteEngine {
         provider(for: agent)?.prewarm(system: PromptBuilder.system(for: agent))
     }
 
-    public func run(_ transcript: String, agent: Agent) async -> RewriteResult {
-        let raw = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty, agent.provider != .none, let p = provider(for: agent) else {
-            return .init(text: raw, original: raw, usedAI: false)
+    /// Reescreve o trecho. Em erro, lança — quem chama NÃO toca no texto do campo.
+    public func boost(_ text: String, agent: Agent) async throws -> String {
+        let raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let p = provider(for: agent) else { throw BoostError.notConfigured }
+        let out = try await withTimeout(timeout) {
+            try await p.rewrite(system: PromptBuilder.system(for: agent),
+                                text: PromptBuilder.user(raw),
+                                model: agent.model, temperature: agent.temperature)
         }
-        do {
-            let out = try await withTimeout(timeout) {
-                try await p.rewrite(system: PromptBuilder.system(for: agent),
-                                    text: PromptBuilder.user(raw),
-                                    model: agent.model, temperature: agent.temperature)
-            }
-            return out.isEmpty ? .init(text: raw, original: raw, usedAI: false)
-                               : .init(text: out, original: raw, usedAI: true)
-        } catch {
-            return .init(text: raw, original: raw, usedAI: false)   // nunca perde o ditado
-        }
+        guard !out.isEmpty else { throw BoostError.emptyResult }
+        return out
     }
 
     func provider(for agent: Agent) -> LLMProvider? { /* switch agent.provider, ver Fase 5 */ }
@@ -318,33 +341,90 @@ func withTimeout<T>(_ d: Duration, _ op: @escaping @Sendable () async throws -> 
 }
 ```
 
-### 3.5 Integração no fim do ditado (app principal)
+### 3.5 BoostController (no teclado)
 
-1. **Ao iniciar a gravação** → `engine.prewarm(agent: store.activeAgent)` (carrega o modelo enquanto o usuário fala — é o principal ganho de latência).
-2. **Ao finalizar a transcrição** → `let r = await engine.run(transcript, agent: active)`.
-3. Gravar `r` em `AppGroup.containerURL/last_rewrite.json` e postar `.rewriteReady`.
-4. No teclado, ao receber `.rewriteReady`: ler o JSON e `textDocumentProxy.insertText(r.text)`; guardar `r.original` para o botão "↺ Original".
+O fluxo de ditado atual **não muda**. Só é preciso um gancho no ponto onde o teclado insere o texto transcrito.
 
-Estado visual no teclado durante a etapa: chip do agente com spinner "Refinando…".
+```swift
+// EntrelinhaKeyboard/Boost/BoostController.swift
+@MainActor
+final class BoostController: ObservableObject {
+    enum State { case hidden, ready, loading, undoable }
+    @Published private(set) var state: State = .hidden
 
-✅ Pronto quando: em um iPhone com Apple Intelligence, ditar "é então tipo amanhã a gente se fala tá" com *Transcrição limpa* insere algo como "Então, amanhã a gente se fala." em menos de ~1,5 s após parar de falar; sem Apple Intelligence, insere a transcrição bruta sem erro.
+    private var lastDictation: String?     // trecho inserido pelo ditado
+    private var boosted: String?           // resultado inserido pelo Boost
+    private let engine = RewriteEngine()
+    private let proxy: UITextDocumentProxy
+    private let store: AgentStore
+
+    init(proxy: UITextDocumentProxy, store: AgentStore) { self.proxy = proxy; self.store = store }
+
+    /// Chamar logo depois do insertText do ditado (único ponto que muda no fluxo atual).
+    func didInsertDictation(_ text: String) {
+        lastDictation = text; boosted = nil; state = .ready
+        engine.prewarm(agent: store.activeAgent)          // aquece enquanto o dedo vai até o botão
+    }
+
+    func boost(with agent: Agent? = nil) async -> BoostError? {
+        guard let original = lastDictation, endsAtCursor(original) else { state = .hidden; return nil }
+        state = .loading
+        do {
+            let out = try await engine.boost(original, agent: agent ?? store.activeAgent)
+            guard endsAtCursor(original) else { state = .hidden; return nil } // usuário mexeu no meio tempo
+            replace(original, with: out)
+            boosted = out; state = .undoable; return nil
+        } catch {
+            state = .ready                                   // texto intacto, Boost continua disponível
+            return error as? BoostError ?? .provider("\(error)")
+        }
+    }
+
+    func undo() {
+        guard let out = boosted, let original = lastDictation, endsAtCursor(out) else { state = .hidden; return }
+        replace(out, with: original); boosted = nil; state = .ready
+    }
+
+    /// Chamar em textDidChange / selectionDidChange quando a mudança não veio do próprio Boost.
+    func userEditedText() { lastDictation = nil; boosted = nil; state = .hidden }
+
+    private func endsAtCursor(_ s: String) -> Bool { proxy.documentContextBeforeInput?.hasSuffix(s) ?? false }
+    private func replace(_ old: String, with new: String) {
+        for _ in 0..<old.count { proxy.deleteBackward() }
+        proxy.insertText(new)
+    }
+}
+```
+
+Notas
+- `deleteBackward` conta *grapheme clusters*; `String.count` também — emojis e acentos ficam corretos.
+- Ignorar o `textDidChange` disparado pelas próprias chamadas de `replace` (flag `isReplacing`), senão o Boost se esconde sozinho.
+- Ditados longos: `documentContextBeforeInput` pode não trazer o trecho inteiro. Nesse caso, comparar só o sufixo disponível (últimos ~200 caracteres) com o fim do trecho.
+
+✅ Pronto quando: em um iPhone com Apple Intelligence, ditar "é então tipo amanhã a gente se fala tá" insere o texto como hoje; tocar em Boost com *Transcrição limpa* troca por algo como "Então, amanhã a gente se fala." em menos de ~1 s; "↺ Original" volta ao ditado; sem Apple Intelligence, o Boost mostra o aviso e o texto não é alterado.
 
 ---
 
-## Fase 4 — Troca de agente na barra do teclado
+## Fase 4 — Barra do teclado: Boost, Original e troca de agente
 
-**Entrega:** ícone de menu na barra do teclado abre um dropdown sobre as teclas para trocar o agente.
+**Entrega:** barra com o Boost ao lado do microfone e ícone de menu que abre um dropdown sobre as teclas para trocar o agente.
 
-Layout da barra (altura ~44 pt):
+Layout da barra (altura ~44 pt), conforme `BoostController.state`:
 ```
-[ ☰ ]  [ ✨ Enriquecer escrita ▾ ]                 [ ↺ Original ]  [ 🎙 ]
+.hidden     [ ☰ Enriquecer escrita ▾ ]                          [ 🎙 ]
+.ready      [ ☰ Enriquecer escrita ▾ ]              [ ⚡ Boost ]  [ 🎙 ]
+.loading    [ ☰ Enriquecer escrita ▾ ]          [ ◌ Reescrevendo ]  [ 🎙 ]
+.undoable   [ ☰ Enriquecer escrita ▾ ]           [ ↺ Original ]  [ 🎙 ]
 ```
 
+- **⚡ Boost**: botão com destaque (cor de acento), entra com animação curta (≤ 150 ms) e haptic leve quando o ditado é inserido. Toque → `boost()`.
+- **Segurar o Boost** (long press): abre o `AgentPickerOverlay`; escolher um agente já dispara o Boost com ele e o deixa ativo.
+- **↺ Original**: substitui o Boost depois de um Boost bem-sucedido; toque → `undo()` e o botão volta a ser Boost (permite tentar outro agente).
+- Durante `.loading`, tocar de novo cancela (o texto não muda).
 - **☰ / chip do agente**: toca → mostra `AgentPickerOverlay`.
 - **Overlay**: cobre a área das teclas (mesma altura do teclado), fundo com material, lista dos agentes com ícone + nome + provedor ("Apple", "Claude", "OpenAI", "OpenRouter"), ✓ no ativo e um item final "Gerenciar agentes…" que abre o app (`entrelinha://agents`).
 - Selecionar → `AgentStore.setActive(id)` → fecha overlay com animação curta (≤ 150 ms) → haptic leve.
 - Agentes indisponíveis (ex.: provedor sem chave, Apple indisponível) aparecem em cinza com legenda "Configurar".
-- **↺ Original**: visível por ~8 s após uma reescrita; apaga o texto inserido (`deleteBackward` × `r.text.count`) e insere `r.original`. Só funciona se o cursor não se moveu (checar `documentContextBeforeInput.hasSuffix(r.text)`).
 
 ```swift
 // EntrelinhaKeyboard/Toolbar/AgentPickerOverlay.swift
@@ -375,7 +455,7 @@ struct AgentPickerOverlay: View {
 }
 ```
 
-✅ Pronto quando: em qualquer app (Notas, WhatsApp), a troca de agente leva 2 toques, persiste, e o próximo ditado usa o novo agente.
+✅ Pronto quando: em qualquer app (Notas, WhatsApp), a troca de agente leva 2 toques e persiste; o próximo Boost usa o novo agente; segurar o Boost escolhe o agente e reescreve em um gesto.
 
 ---
 
@@ -461,7 +541,7 @@ enum HTTP {
 Para cortar o handshake TLS da primeira chamada, no `prewarm` de provedores de nuvem faça um `HEAD` barato ao host enquanto o usuário fala (a conexão fica viva no pool).
 
 ### 5.5 Registro de provedores
-`RewriteEngine.provider(for:)` resolve: `.apple` → `AppleIntelligenceProvider` (se disponível), `.openAI`/`.openRouter`/`.anthropic` → provedor com a chave do Keychain; sem chave → `nil` (cai na transcrição bruta e o teclado mostra "Configurar").
+`RewriteEngine.provider(for:)` resolve: `.apple` → `AppleIntelligenceProvider` (se disponível), `.openAI`/`.openRouter`/`.anthropic` → provedor com a chave do Keychain; sem chave → `nil` (o Boost lança `.notConfigured`, o texto fica intacto e o teclado mostra "Configurar").
 
 ✅ Pronto quando: o mesmo agente funciona trocando o provedor entre Apple, OpenAI, OpenRouter e Anthropic, e o botão **Testar** mostra a latência de cada um.
 
@@ -479,37 +559,36 @@ Tela `AgentEditorView`:
 - Ações: duplicar preset para editar, reordenar (a ordem é a do dropdown), excluir (presets podem ser ocultados, não apagados), restaurar presets.
 - Importar/exportar agente como JSON (compartilhar prompts entre aparelhos/pessoas).
 
-✅ Pronto quando: um agente criado do zero aparece imediatamente no dropdown do teclado e é aplicado no próximo ditado.
+✅ Pronto quando: um agente criado do zero aparece imediatamente no dropdown do teclado e é aplicado no próximo Boost.
 
 ---
 
 ## Fase 7 — Velocidade, resiliência e privacidade
 
-Metas de latência (do fim da fala até o texto inserido, ditado de ~30 palavras):
+Metas de latência (do toque no Boost até o trecho substituído, ~30 palavras). O ditado em si não ganha nenhuma latência nova.
 
-| Caminho | Meta p50 | Teto (timeout → bruto) |
+| Caminho | Meta p50 | Teto (timeout → texto intacto) |
 |---|---|---|
-| Sem agente | < 150 ms | — |
-| Apple Intelligence | < 1,2 s | 4 s |
+| Apple Intelligence | < 1 s | 4 s |
 | Nuvem (modelo rápido) | < 2 s | 6 s |
 
 Checklist
-- [ ] `prewarm` no início da gravação (modelo on-device e conexão HTTP).
-- [ ] Sessão de modelo nova por ditado (sem histórico acumulado = respostas mais rápidas e sem vazamento de contexto).
-- [ ] Ditado acima de ~2.500 palavras: dividir por parágrafos e processar em paralelo, ou usar provedor de nuvem.
-- [ ] Atalho de pular: se o ditado tem < 3 palavras e o agente é "Transcrição limpa", não chamar IA.
-- [ ] Offline: provedores de nuvem são pulados imediatamente (checar `NWPathMonitor`), sem esperar timeout.
+- [ ] `prewarm` quando o Boost aparece (modelo on-device e conexão HTTP), não no toque.
+- [ ] Sessão de modelo nova por Boost (sem histórico acumulado = respostas mais rápidas e sem vazamento de contexto).
+- [ ] Trecho acima de ~2.500 palavras: dividir por parágrafos e processar em paralelo, ou usar provedor de nuvem.
+- [ ] Ditados de 1 palavra: não mostrar o Boost (não há o que reescrever).
+- [ ] Offline: para agentes de nuvem, o Boost aparece desativado (checar `NWPathMonitor`) em vez de tentar e esperar timeout.
 - [ ] Logs locais de latência por provedor (sem conteúdo do texto) para a tela de diagnóstico.
 - [ ] Privacidade: aviso claro de que provedores externos recebem o texto ditado; Apple processa no aparelho. Nada de texto em logs/analytics.
 - [ ] Chaves só no Keychain; nunca no App Group nem em backups não criptografados.
 
-✅ Pronto quando: as metas acima são medidas em aparelho real e o app nunca perde um ditado (falha de IA → transcrição bruta).
+✅ Pronto quando: as metas acima são medidas em aparelho real e uma falha de IA nunca altera nem apaga o texto do usuário.
 
 ---
 
 ## Fase 8 — QA e lançamento
 
-- Testes unitários: `PromptBuilder`, decodificação dos 3 provedores (respostas gravadas), `RewriteEngine` (timeout e fallback com provedor falso).
+- Testes unitários: `PromptBuilder`, decodificação dos 3 provedores (respostas gravadas), `RewriteEngine` (timeout e erros com provedor falso), `BoostController` (substituição, undo, esconder ao editar) com um `UITextDocumentProxy` falso.
 - Testes manuais: Notas, WhatsApp, Mail, Safari; tema claro/escuro; teclado sem Acesso Total (mostrar instrução para ativar); Apple Intelligence desligada; modo avião.
 - Atualizar `README.md` e textos da App Store (privacidade: dados enviados a terceiros apenas quando o usuário escolhe um provedor externo).
 
@@ -521,8 +600,8 @@ Checklist
 |---|---|---|
 | 1 | Fundamentos compartilhados | App e teclado conversam |
 | 2 | Agentes e presets | Lista de agentes + agente ativo |
-| 3 | Motor + Apple Intelligence | **Ditado já sai reescrito (MVP)** |
-| 4 | Dropdown na barra do teclado | Troca de agente em 2 toques |
+| 3 | Boost + motor + Apple Intelligence | **Ditar como hoje e tocar Boost para reescrever (MVP)** |
+| 4 | Barra: Boost, Original e dropdown | Troca de agente em 2 toques; segurar Boost escolhe e reescreve |
 | 5 | OpenAI / OpenRouter / Anthropic | Modelos externos opcionais |
 | 6 | Editor de agentes | Prompts 100% personalizados |
 | 7 | Velocidade e resiliência | Metas de latência atingidas |
